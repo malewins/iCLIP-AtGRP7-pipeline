@@ -8,6 +8,7 @@ Step by step workflow of AtGRP7 iCLIP sequencing analysis and binding site deter
 - STAR (v 2.6.0a)
 - PureCLIP (v 1.0.4)
 - bedtools (v2.27.1)
+- bioawk (conda)
 - Python (v 3.5) 
 - R (v 3.5)
   
@@ -50,17 +51,53 @@ cutadapt -j 3 -a $ADAPTER -o adapterless/AtGRP7-GFP_LL36_trimmed.fastq.gz  > ada
 The sequenced library is provided multiplexed, i.e. the sequencing file contains reads with a barcode adapter sequence at the 5' end to distinguish the individual samples, the reads need to be assigned to the corresponding experiment and saved into separate files:
 ```
 mkdir -p demultiplexed
-flexbar -r adapterless/AtGRP7-GFP_LL36_trimmed.fastq.gz -b Barcodes_AtGRP7-GFP_LL36_rc.fa -n 2 -z GZ -bk -m 24 -o -t demultiplexed/ > demultiplexed/flexbar_AtGRP7-GFP_LL36.log
+flexbar -r adapterless/AtGRP7-GFP_LL36_trimmed.fastq.gz -b Barcodes_AtGRP7-GFP_LL36_rc.fa \
+  -n 2 \
+  -z GZ \
+  -bk \
+  -m 24 \
+  -o \
+  -t demultiplexed/ > demultiplexed/flexbar_AtGRP7-GFP_LL36.log
 ```
 
 The barcode file has to be provided in FASTA format, where the experimental barcode is defined and random barcode positions are marked with N: 
 ```
->rep1
-NNNAAAANNN
-...
+>AtGRP7-GFP-LL36_rep1
+NNTCCGNNN
+>AtGRP7-GFP-LL36_rep2
+NNGCCANNN
+>AtGRP7-GFP-LL36_rep3
+NNAACCNNN
+>AtGRP7-GFP-LL36_rep4
+NNCGCCNNN
+>AtGRP7-GFP-LL36_rep5
+NNGCCANNN
 ```
 
 ### quality trimming
+
+After demultiplexing, the reads undergo a quality and length trim with flexbar:
+
+```
+for FQ in demultiplexed/*.gz;
+do
+  OUTPREFIX="${FQ#demultiplexed/}"
+  OUTPREFIX="${OUTPREFIX%.fastq.gz}"
+  flexbar -r $FQ  --zip-output GZ -t $OUTDIR/$OUTPREFIX  -q WIN -qf sanger  -qt 24 --min-read-length 15 -n 3
+done
+```
+
+To conserve the random barcode part for later PCR duplicate removal, it is written to the FASTQ *read_id* field using bioawk:
+
+```
+OUTDIR=demultiplexed/correct_IDs
+mkdir -p $OUTDIR
+for FQ in demultiplexed/*.gz;
+do
+  OUTPREFIX="${FQ#demultiplexed/}"
+  bioawk -c fastx '{print "@"$name"#"substr($comment,8) "\n"$seq"\n+\n"$qual}' $FQ | gzip >$OUTDIR/$OUTPREFIX.fastq.gz
+done
+```
 
 ### genome mapping
 ### demultiplexing
