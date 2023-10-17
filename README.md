@@ -99,8 +99,66 @@ do
 done
 ```
 
-### genome mapping
-### demultiplexing
+### genomic read mapping
+Before mapping reads to the Arabidopsis thalian genome, download the [TAIR10 genome FASTA](https://www.arabidopsis.org/download_files/Genes/TAIR10_genome_release/TAIR10_chromosome_files/TAIR10_chr_all.fas.gz) and create an index using STAR:
+
+```
+REF=TAIR10_chr_all.fas.gz
+mkdir -p STARindex
+STAR --runMode genomeGenerate \
+  --runThreadN 6 \
+  --genomeDir STARindex \
+  --genomeFastaFiles $REF \
+  --genomeSAindexNbases 12 \
+  --outFileNamePrefix STARindex_
+```
+
+After index generation uniquely map iCLIP reads using STAR and creating a separate folder for each replicate:
+
+```
+prefix=demultiplexed/correct_IDs/
+outdir=mapped_unique
+
+mkdir -p $outdir
+
+for fastq in demultiplexed/correct_IDs/*.gz; do
+ outname="${fastq#$prefix}"
+ outname="${outname%.fastq.gz}"
+ mkdir -p $outdir/$outname
+ STAR --genomeDir STARindex \
+  --readFilesIn $fastq \
+  --readFilesCommand zcat \
+  --runThreadN 12 \
+  --alignIntronMin 11 \
+  --alignIntronMax 28000 \
+  --outFilterMismatchNmax 2 \
+  --outFilterMultimapNmax 1 \
+  --outFileNamePrefix $outdir/$outname/ \
+  --outSAMprimaryFlag AllBestScore \
+  --outSAMtype BAM SortedByCoordinate \
+  --outStd BAM_SortedByCoordinate \
+  --alignEndsType Extend5pOfRead1 > $outdir/$outname".bam"
+done
+```
+
+### PCR duplicate removal
+Mapped reads are deduplicated using the custom Python3 script that groups Alignments at the Start position and removes reads with identical random barcode tags:
+
+```
+prefix=mapped_unique
+outdir=deduplicated
+
+mkdir -p $outdir
+
+for bam in 06_mapped_A11_protein_coding/*.bam; do
+ outname="${bam#$prefix}"
+ outname="${outname%.bam}"
+ mkdir -p $outdir/$outname
+ python3.6 python/remove_PCR_duplicate_from_bam.py $bam $outdir/$outname.bam
+ echo $SECONDS
+done
+```
+
 ### peak calling
 ### binding site definition
 ### reproducibility filtering
