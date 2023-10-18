@@ -160,5 +160,88 @@ done
 ```
 
 ### peak calling
+
+To amplify the binding signal before peak calling, merge the deduplicated replicates into one BAM file with samtools:
+```
+samtools merge -f deduplicated/AtGRP7-GFP-LL36.bam deduplicated/AtGRP7-GFP-LL36_rep?.bam
+```
+
+Index the AtGRP7 BAM file Run PureCLIP in standard mode on the merged BAM file to call peaks:
+
+```
+BAM=deduplicated/AtGRP7-GFP-LL36.bam
+
+samtools index $BAM
+
+pureclip -ld \
+  -i $BAM \
+  -bai $BAM.bai \
+  -g TAIR10_chr_all.fas.gz \
+  -o AtGRP7-GFP-LL36.peaks.bed \
+  -bc 0 \
+  -nt 12
+```
+
 ### binding site definition
+
+Before binding sites can be defined, crosslink tracks need to be generated with bedtools and AWK:
+
+```
+mkdir -p beds
+for bam in deduplicated/*.bam;
+do
+  bedtools bamtobed -i $bam > beds/"${bam%.bam}.bed"
+done
+
+cd beds
+for bed in *.bed;
+do
+  awk 'BEGIN{OFS="\t"}{if($6=="+") print($1,($2-1),$2,$4,1,$6); else print($1,($3),($3+1),$4,1,$6)}' $bed | sort -T . -k1,1 -k2,2n > ${bed%.bed}.xlsite.bed
+done
+
+mkdir -p bedgraphs
+for bed in *xlsite.bed;
+do
+  bedtools merge -d -1 -c 5 -o sum -i $bed | awk 'BEGIN{OFS="\t"}{print($1,$2,$3,$4)}' > bedgraphs/"$bed"graph
+done
+```
+prepare TAIR10_genome.dat
+
+define binding site regions (9nt) and remove binding sites with only 1 crosslink position with bedtools and AWK:
+
+```
+mkdir -p bsites
+
+for EXP in 7GFP-GFP-LL36
+do
+  awk '$5>10{print}' $EXP.peaks.bed | bedtools slop -b 4 -g TAIR10_genome.dat | bedtools coverage -a - -b beds/$EXP.xlsite.bed -s | awk '$8>1{print}' | bedtools sort -i - | bedtools slop -b -4 -g TAIR10_genome.dat | bedtools merge -s -i - -c 5 -o collapse  > bsites/$EXP.peaks.filter.bed
+  done
+done
+```
+and report only peaks with highest scores in direct adjacency and save peak position and binding site ranges separately: 
+
+```
+add Python script
+python3 extract_dominant_site.py bsites/AtGRP7-GFP-LL36.peaks.filter.bed > bsites/"${bed%peaks.filter.bed}domsite.bed"
+
+bedtools slop -i -b 4 -g TAIR10_genome.dat > bsites/AtGRP7-GFP-LL36.bsites.bed
+```
+
+
+
 ### reproducibility filtering
+
+Compute coverage of crosslinking on the binding sites from each replicate using bedtools:
+
+```
+outdir=bsite_coverage
+mkdir -p $outdir
+for REP in 1 2 3 4 5;
+do
+  bedtools coverage -a bsites/AtGRP7-GFP-LL36.bsites.bed -b beds/"AtGRP7-GFP-LL36_rep"$REP.xlsite.bed -s -counts > $outdir/"AtGRP7-GFP-LL36_rep"$REP".bsites".cov
+done
+
+```
+
+
+
