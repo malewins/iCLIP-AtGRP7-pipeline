@@ -243,5 +243,67 @@ done
 
 ```
 
+Check for binding site reproducibility using R and save reproducible binding sites to a BED file:
 
+```
+library(tidyverse)
+library(magrittr)
+
+BED_cols <- c("chrom", "start", "end", "name", "pureCLIP", "strand", "coverage")
+
+# load coverage data
+rep1_bsite <- read_delim("bsite_coverage/AtGRP7-GFP-LL36_rep1.bsites.cov", 
+  "\t", escape_double = FALSE, col_names = BED_cols, trim_ws = TRUE)
+rep2_bsite <- read_delim("bsite_coverage/AtGRP7-GFP-LL36_rep2.bsites.cov", 
+  "\t", escape_double = FALSE, col_names = BED_cols, trim_ws = TRUE)
+rep3_bsite <- read_delim("bsite_coverage/AtGRP7-GFP-LL36_rep3.bsites.cov", 
+  "\t", escape_double = FALSE, col_names = BED_cols, trim_ws = TRUE)
+rep4_bsite <- read_delim("bsite_coverage/AtGRP7-GFP-LL36_rep4.bsites.cov", 
+  "\t", escape_double = FALSE, col_names = BED_cols, trim_ws = TRUE)
+rep5_bsite <- read_delim("bsite_coverage/AtGRP7-GFP-LL36_rep5.bsites.cov", 
+  "\t", escape_double = FALSE, col_names = BED_cols, trim_ws = TRUE)
+
+
+# compute quantile distribution
+rep1_quant <- quantile(rep1_bsite$coverage, probs = seq(.1,.5,.1))
+rep2_quant <- quantile(rep2_bsite$coverage, probs = seq(.1,.5,.1))
+rep3_quant <- quantile(rep3_bsite$coverage, probs = seq(.1,.5,.1))
+rep4_quant <- quantile(rep4_bsite$coverage, probs = seq(.1,.5,.1))
+rep5_quant <- quantile(rep5_bsite$coverage, probs = seq(.1,.5,.1))
+
+
+# create table with crosslink counts  
+AtGRP7_LL36_bsites <- tibble(
+  bsite=paste(rep1_bsite$chrom,rep1_bsite$start,rep1_bsite$end,rep1_bsite$strand,sep = "_"),
+  rep1=rep1_bsite$coverage,
+  rep2=rep2_bsite$coverage,
+  rep3=rep3_bsite$coverage,
+  rep4=rep4_bsite$coverage,
+  rep5=rep5_bsite$coverage
+)
+
+# apply crosslink threshold (30% quantile)
+# see repX_quant for corresponding threshold
+AtGRP7_LL36_bsites["rep1_q"] <- ifelse(AtGRP7_LL36_bsites$rep1>=9, 1,0)
+AtGRP7_LL36_bsites["rep2_q"] <- ifelse(AtGRP7_LL36_bsites$rep2>=11, 1,0)
+AtGRP7_LL36_bsites["rep3_q"] <- ifelse(AtGRP7_LL36_bsites$rep3>=5, 1,0)
+AtGRP7_LL36_bsites["rep4_q"] <- ifelse(AtGRP7_LL36_bsites$rep4>=3, 1,0)
+AtGRP7_LL36_bsites["rep5_q"] <- ifelse(AtGRP7_LL36_bsites$rep5>=3, 1,0)
+
+# save binding sites to tab-separated BED file
+AtGRP7_LL36_bsites.bed <-
+  AtGRP7_LL36_bsites %>% 
+  filter(overlap>=4) %>% # 30% Filter
+  separate(bsite,c("chrom","start","end","strand"),"_") %>%
+  mutate(name="AtGRP7-GFP_LL36", score = ".") %>%
+  select(chrom,start,end,name,score,strand)
+
+write.table(AtGRP7_LL36_bsites.bed, 
+  file = "bsites/AtGRP7-GFP-LL36_repbsites.bed",
+  sep = "\t",
+  row.names = F, 
+  col.names = F,
+  quote = F)
+
+```
 
